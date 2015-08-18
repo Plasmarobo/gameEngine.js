@@ -2,7 +2,7 @@
 
 var game = {};
 
-document.addEventListener("DOMContentLoaded", function(event) {
+window.onload = function(event) {
   initializeGame();
   //Create a friendly game loop
   // http://nokarma.org/2011/02/02/javascript-game-development-the-game-loop/
@@ -37,36 +37,27 @@ document.addEventListener("DOMContentLoaded", function(event) {
   })();
   
   window.onEachFrame(game.update);
-});
+};
 
-function resizeCanvas( element, callback ){
-  var elementHeight = element.height,
-      elementWidth = element.width;
-  setInterval(function(){
-      if( element.height !== elementHeight || element.width !== elementWidth ){
-        elementHeight = element.height;
-        elementWidth = element.width;
-        game.window.width = window.innerWidth;
+function resizeCanvas(){
+  game.window.width = window.innerWidth;
   game.window.height = window.innerHeight;
   game.width = game.context.canvas.clientWidth;
   game.height = game.context.canvas.clientHeight;
   game.scale = Math.min(expectedWidth/game.width, expectedHeight/game.height);
-        callback();
-      }
-  }, 300);
 }
+
+window.addEventListener("resize", resizeCanvas);
 
 
 function initializeGame()
 {
   game.window = document.getElementById("game_window");
-  resizeCanvas(game.window);
   document.addEventListener('keydown', keyDown, false);
   document.addEventListener('keyup', keyUp, false);
 
   game.context = game.window.getContext("2d");
   resizeCanvas();
-  
   game.assetCount = assetQueue.length;
   game.fps = 60;
   game.clearColor = "rgb(0,0,0)";
