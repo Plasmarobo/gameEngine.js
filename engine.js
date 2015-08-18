@@ -1,52 +1,7 @@
-// Initial game settings.
-// Override or alter these (we suggest you override in another js file)
-var game = { 
-  settings : {
-    window_id      : "game_window",
-    expectedWidth  : 1280,
-    expectedHeight : 720,
-    pixelScale     : 8, // 8 px to one unit at scale 1 
-    scale          : 1,
-    fps            : 60, // Target FPS
-    allowSave      : false,
-  },
-  input : {
-    keystateDown   : 0,
-    keystateUp     : 1,
-    KeyCodes : {
-      Backspace    : 8,
-      Tab          : 9,
-      Enter        : 13,
-      Shift        : 16,
-      Ctrl         : 17,
-      Alt          : 18,
-      Esc          : 27,
-      Space        : 32,
-      Left         : 37,
-      Up           : 38,
-      Right        : 39,
-      Down         : 40,
-      A            : 65,
-      D            : 68,
-      S            : 83,
-      W            : 87,
-    },
-    eventQueue : [],
-    keyStates : Array(255),
-  },
-  assetQueue : [],
-  assets : {images: {}, audio: {}},
+//REQUIRES engine_header.js TO BE REQUIRED FIRST
 
-  stack : [],
-  audio : {
-    music : null,
-    sfx : [],
-  },
-  clearColor : "rgb(0, 0, 0)",
-};
+var game = {};
 
-// Engine logic
-// Create game loop using requestAnimationFrame
 document.addEventListener("DOMContentLoaded", function(event) {
   initializeGame();
   //Create a friendly game loop
@@ -54,6 +9,11 @@ document.addEventListener("DOMContentLoaded", function(event) {
   (function() {
   var onEachFrame;
   if (window.requestAnimationFrame) {
+    onEachFrame = function(cb) {
+      var _cb = function () { cb(); requestAnimationFrame(_cb); }
+      _cb();
+    }
+  }else if (window.mozRequestAnimationFrame) {
     onEachFrame = function(cb) {
       var _cb = function () { cb(); requestAnimationFrame(_cb); }
       _cb();
@@ -79,39 +39,46 @@ document.addEventListener("DOMContentLoaded", function(event) {
   window.onEachFrame(game.update);
 });
 
+function resizeCanvas( element, callback ){
+  var elementHeight = element.height,
+      elementWidth = element.width;
+  setInterval(function(){
+      if( element.height !== elementHeight || element.width !== elementWidth ){
+        elementHeight = element.height;
+        elementWidth = element.width;
+        game.window.width = window.innerWidth;
+  game.window.height = window.innerHeight;
+  game.width = game.context.canvas.clientWidth;
+  game.height = game.context.canvas.clientHeight;
+  game.scale = Math.min(expectedWidth/game.width, expectedHeight/game.height);
+        callback();
+      }
+  }, 300);
+}
 
 
-// Register all assets and functions before calling initializeGame
 function initializeGame()
 {
-  game.window = document.getElementById(game.settings.window_id);
-
+  game.window = document.getElementById("game_window");
+  resizeCanvas(game.window);
   document.addEventListener('keydown', keyDown, false);
   document.addEventListener('keyup', keyUp, false);
 
   game.context = game.window.getContext("2d");
   resizeCanvas();
   
-  game.assetCount = game.assetQueue.length;
-
-  game.clear = (function()
-  {
-    this.context.fillStyle = this.clearColor;
-    this.context.fillRect(0, 0, this.width, this.height);
-  }).bind(game);
-
-  game.clear();
-
-  // drawing functions
-  game.context.drawRotated = (function(image, x, y, angle) {
-    // TODO: SCALE COORDINATES SOMEHOW
-    this.save();
-    this.translate(x+game.width/2, y+game.height/2);
-    this.rotate(angle);
-    this.drawImage(image, -(image.width/2), -(image.height/2));
-    this.restore();
-  }).bind(game.context);
-
+  game.assetCount = assetQueue.length;
+  game.fps = 60;
+  game.clearColor = "rgb(0,0,0)";
+  game.inputEvents = [];
+  game.keyStates = Array(255); //ASCII keystates?
+  game.assets = {images: {}, audio: {}, animations: {}};
+  game.allowSave = false;
+  clear();
+  game.stack = [];
+  game.context.drawRotated = DrawRotated.bind(game.context);
+  game.music = null;
+  game.sfx = [];
   game.playMusic = (function(name)
   {
     if (game.music != null)
@@ -120,9 +87,9 @@ function initializeGame()
     }
     game.music = game.assets.audio[name];
     game.music.loop = true;
+    game.music.volume = 0.5;
     game.music.play();
   }).bind(game);
-
   game.playEffect = (function(name)
   {
     var sfx = game.assets.audio[name];
@@ -130,23 +97,25 @@ function initializeGame()
     // game.sfx.push(sfx);
     sfx.play();
   }).bind(game);
-  game.lastframe = (new Date).getTime();
   game.delta = 0;
+  game.lastframe = (new Date).getTime();
   game.update = (function() {
     var loops = 0, skipTicks = 1000 / game.fps,
-      maxFrameSkip = 10,
-      nextGameTick = (new Date).getTime();
+      maxFrameSkip = 120,
+      currentTime = (new Date).getTime(),
+      nextGameTick = currentTime;
   
     return function() {
       loops = 0;
+
       if (game.stack.length > 0)
       {
-        while ((new Date).getTime() > nextGameTick && loops < maxFrameSkip) {
-          game.delta = (new Date).getTime() - game.lastframe;
+        while (((currentTime = (new Date).getTime()) > nextGameTick) && (loops < maxFrameSkip)) {
+          game.delta = currentTime - game.lastframe;
           game.stack[game.stack.length-1].update();
           nextGameTick += skipTicks;
           loops++;
-          game.lastframe = (new Date).getTime();
+          game.lastframe = currentTime;
           // purge input queue
         }
     
@@ -165,6 +134,11 @@ function initializeGame()
   game.stack.push(startLoader());
 };
 
+function clear()
+{
+  game.context.fillStyle = game.clearColor;
+  game.context.fillRect(0, 0, game.width, game.height);
+}
 
 function startLoader()
 {
@@ -224,9 +198,22 @@ function loadAsset(description)
       alert("Failed to load audio " + audioObj.src);
     };
     game.assets.audio[description.name] = audioObj;
+  }else if (description.type == "animation")
+  {
+    game.assets.animations[description.name] = description.anim;
+    onload();
   }
   else {alert("Unknown content specified for load, aborting");}
 }
+
+function DrawRotated(image, x, y, angle) {
+  // TODO: SCALE COORDINATES SOMEHOW
+  this.save();
+  this.translate(x+game.width/2, y+game.height/2);
+  this.rotate(angle);
+  this.drawImage(image, -(image.width/2), -(image.height/2));
+  this.restore();
+};
 
 function newObject()
 {
@@ -277,16 +264,95 @@ function keyDown(event)
   game.inputEvents.push({state: KEYSTATE_DOWN, keyCode: keyCode});
 };
 
-function resizeCanvas() {
-  game.window.width = window.innerWidth;
-  game.window.height = window.innerHeight;
-  game.width = game.context.canvas.clientWidth;
-  game.height = game.context.canvas.clientHeight;
-  game.scale = Math.min(expectedWidth/game.width, expectedHeight/game.height);
-};
-document.addEventListener("resize", resizeCanvas);
-
 function projectCoordinates(obj)
 {
   return {x: obj.x * pixelScale * game.scale, y: obj.y * pixelScale * game.scale};
 }
+
+function advanceAnimation(delta)
+{
+  this.frameTime += game.delta;
+  var currentFrame = this.currentFrame();
+  if (this.frameTime > currentFrame.time)
+  {
+    if (currentFrame.trigger != null)
+    {
+      currentFrame.trigger();
+    }
+
+    if (this.frameIndex < this.currentAnimation().frames.length)
+    {
+      this.frameTime = 0;
+      if (this.frameIndex < this.currentAnimation().frames.length-1)
+      {
+        this.frameIndex++;
+      }
+      else
+      {
+        if (this.currentAnimation().loop == true)
+        {
+          this.frameIndex = 0;
+        }
+      }
+    }
+    
+  }
+}
+
+function newAnimation(asset, animation, initial_anim, update_function)
+{
+  var ao = {};
+  ao.img = game.assets.images[asset];
+  ao.x = 0;
+  ao.y = 0;
+  ao.z = 0;
+  ao.anim = game.assets.animations[animation];
+
+  ao.frameTime = 0;
+  ao.frameIndex = 0;
+  ao.animIndex = initial_anim;
+  ao.advanceAnimation = (advanceAnimation).bind(ao);
+  ao.update_binding = (update_function).bind(ao);
+  ao.update = (function() {
+    this.update_binding();
+    this.advanceAnimation();    
+  }).bind(ao);
+
+  ao.draw = (function() {
+      var frame = this.currentFrame();
+      game.context.drawImage(this.img, frame.x, frame.y, frame.w, frame.h,this.x, this.y, frame.w, frame.h);
+  }).bind(ao);
+
+  ao.currentFrame = (function(){
+    return this.anim[this.animIndex].frames[this.frameIndex];
+  }).bind(ao);
+  ao.currentAnimation = (function(){
+    return this.anim[this.animIndex];
+  }).bind(ao);
+  ao.setAnimation = (function(key){
+    if (this.animIndex != key)
+    {
+      this.animIndex = key;
+      this.frameIndex = 0;
+      this.frameTime = 0;
+    }
+  }).bind(ao);
+  return ao;
+}
+
+function newStaticObject(asset)
+{
+  var so = {};
+  so.img = game.assets.images[asset];
+  so.x = 0;
+  so.y = 0;
+  so.z = 0;
+  so.update = (function() {
+      // Do nothing
+    }).bind(so);
+  so.draw = (function()
+    {
+      game.context.drawImage(this.img, this.x, this.y);
+    }).bind(so);
+  return so;
+};
